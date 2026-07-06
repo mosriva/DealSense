@@ -1,0 +1,35 @@
+# Environment — NEVER commit API keys
+.env
+.env.local
+.env.*.local
+
+# Database — contains user data
+data/*.db
+data/*.sqlite
+
+# Python
+venv/
+__pycache__/
+*.py[cod]
+*.pyo
+.Python
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+
+# Streamlit
+.streamlit/secrets.toml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Logs
+*.log
+npm-debug.log*
