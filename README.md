@@ -119,7 +119,7 @@ Google Antigravity    Vibe coding IDE used to build this
 
 ```bash
 # Clone the repo
-git clone https://github.com/yourusername/DealSense.git
+git clone https://github.com/mosriva/DealSense.git
 cd DealSense
 
 # Create virtual environment
