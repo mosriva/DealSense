@@ -1,10 +1,21 @@
-import sys, os, threading, time, streamlit as st; sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+import sys, os, streamlit as st; sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from main import run_dealsense
 from ui.utils import get_active_alerts, render_sidebar, CSS_STYLE; from ui.cards import render_deal_cards
-
+def check_password() -> bool:
+    """Gate the entire app behind a password stored in secrets."""
+    if st.session_state.get("authenticated"): return True
+    st.set_page_config(page_title="DealSense", page_icon="🔍", layout="centered")
+    with st.columns([1, 2, 1])[1]:
+        st.markdown("## 🔍 DealSense\n##### Multi-Agent AI Product Search"); st.divider(); st.markdown("**Enter demo access password:**")
+        pwd = st.text_input("", type="password", placeholder="Enter password...", label_visibility="collapsed")
+        if st.button("Access Demo →", type="primary", use_container_width=True):
+            if pwd == os.getenv("APP_PASSWORD", ""): st.session_state.authenticated = True; st.rerun()
+            else: st.error("Incorrect password. Contact the author for access.")
+        st.divider(); st.caption("🔗 [View source code](https://github.com/mosriva/DealSense)\n\nClone the repo to run with your own API keys.")
+    return False
+if not check_password(): st.stop()
 st.set_page_config(page_title="DealSense", page_icon="🔍", layout="wide"); st.markdown(CSS_STYLE, unsafe_allow_html=True)
 for k, v in [("last_query", ""), ("confirmed_budget", 50), ("confirmed_must_have", ""), ("confirmed_nice_to_have", ""), ("show_confirm", False), ("last_results", None), ("running_query", None)]: st.session_state.setdefault(k, v)
-
 def quick_extract_specs(query: str) -> dict:
     """Extract specs from product query using Gemini."""
     from langchain_google_genai import ChatGoogleGenerativeAI
@@ -14,17 +25,6 @@ def quick_extract_specs(query: str) -> dict:
         if match: return json.loads(match.group())
     except: pass
     return {"budget": 50, "must_have": "", "nice_to_have": "", "category": ""}
-
-def animate_steps(ph, steps, stop):
-    """Animate agent steps while pipeline runs in background."""
-    for i, (emoji, name, desc) in enumerate(steps):
-        if stop.is_set(): break
-        ph[i].markdown(f"🔄 {emoji} **{name}** — {desc}")
-        for _ in range(20):
-            if stop.is_set(): break
-            time.sleep(0.1)
-        if not stop.is_set(): ph[i].markdown(f"✅ {emoji} **{name}** — {desc}")
-
 steps = [("🧠", "Orchestrator", "Analyzing your request"), ("📋", "Spec Parser", "Building search query"), ("🔍", "Web Search", "Finding products"), ("⭐", "Review Analyst", "Analyzing reviews"), ("💰", "Price Tracker", "Tracking prices"), ("🏆", "Deal Scorer", "Ranking deals"), ("✨", "Synthesizer", "Generating recommendations")]
 render_sidebar(st.session_state.last_results, get_active_alerts())
 sc1, sc2, sc3 = st.columns([1, 2, 1])
@@ -38,7 +38,6 @@ with sc2:
             except: st.session_state.confirmed_budget = 0
             st.session_state.confirmed_must_have, st.session_state.confirmed_nice_to_have = str(specs.get("must_have") or ""), str(specs.get("nice_to_have") or "")
         st.session_state.show_confirm = True; st.rerun()
-
 if st.session_state.show_confirm:
     st.markdown("**Confirm your search requirements:**"); c1, c2 = st.columns(2)
     budget = c1.number_input("💰 Max Budget ($) — leave 0 if no limit", min_value=0, max_value=50000, value=int(st.session_state.confirmed_budget or 0), step=50, key=f"budget_{st.session_state.last_query}")
@@ -51,28 +50,25 @@ if st.session_state.show_confirm:
         if must_have: eq += f" Must have: {must_have}."
         if nice_to_have: eq += f" Nice to have: {nice_to_have}."
         st.session_state.running_query, st.session_state.show_confirm = eq, False; st.rerun()
-
 col1, col2 = st.columns([0.4, 0.6])
 with col1:
     st.subheader("🤖 Agent Progress")
     if st.session_state.running_query:
         ph = [st.empty() for _ in steps]
         for i, (emoji, name, desc) in enumerate(steps): ph[i].markdown(f"⏳ {emoji} **{name}** — {desc}")
-        ev = threading.Event(); t = threading.Thread(target=animate_steps, args=(ph, steps, ev)); t.start()
-        try: st.session_state.last_results = run_dealsense(st.session_state.running_query)
+        ph[0].markdown(f"🔄 🧠 **Orchestrator** — Analyzing your request")
+        try:
+            with st.spinner("🤖 DealSense agents working..."): st.session_state.last_results = run_dealsense(st.session_state.running_query)
         except Exception as e: st.error(f"Pipeline error: {str(e)}")
-        finally: ev.set(); t.join()
         for i, (emoji, name, desc) in enumerate(steps): ph[i].markdown(f"✅ {emoji} **{name}** — {desc}")
         st.session_state.running_query = None; st.rerun()
     elif st.session_state.last_results:
         for emoji, name, desc in steps: st.markdown(f"✅ {emoji} **{name}** — {desc}")
         spec = st.session_state.last_results.get("structured_spec", {})
         must, nice = spec.get("must_have_features", []), spec.get("nice_to_have_features", [])
-        with st.expander("Search Parameters", expanded=True):
-            st.table({"Parameter": ["Category", "Budget", "Must-have", "Nice-to-have", "Use Case"], "Value": [spec.get("category", "N/A"), f"${spec.get('budget_max')}" if spec.get("budget_max") else "N/A", ", ".join(must) if must else "N/A", ", ".join(nice) if nice else "N/A", spec.get("use_case") or "N/A"]})
+        with st.expander("Search Parameters", expanded=True): st.table({"Parameter": ["Category", "Budget", "Must-have", "Nice-to-have", "Use Case"], "Value": [spec.get("category", "N/A"), f"${spec.get('budget_max')}" if spec.get("budget_max") else "N/A", ", ".join(must) if must else "N/A", ", ".join(nice) if nice else "N/A", spec.get("use_case") or "N/A"]})
     else:
         for emoji, name, desc in steps: st.markdown(f"⚪ {emoji} **{name}** — {desc}")
-
 with col2:
     if st.session_state.running_query: st.empty()
     elif st.session_state.last_results: render_deal_cards(st.session_state.last_results)
